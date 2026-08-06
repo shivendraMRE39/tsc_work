@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-
+ 
 module soc_top(
     input  logic clk,
     input  logic rst,          // Asynchronous reset input
