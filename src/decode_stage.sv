@@ -1,165 +1,481 @@
+//`timescale 1ns / 1ps
+
+//module decode_stage(
+//    input  logic        clk,
+//    input  logic        rst,
+
+//    input  logic        RegWriteW,
+
+//    input  logic [31:0] InstrD,
+//    input  logic [31:0] PCD,
+//    input  logic [31:0] PcPlus4D,
+
+//    input  logic [31:0] ResultW,
+//    input  logic [4:0]  RdW,
+
+//    input  logic        StallE, 
+//    input  logic        FlushE, 
+
+//    output logic        RegWriteE,
+//    output logic [1:0]  ResultSrcE,
+//    output logic        MemWriteE,
+//    output logic        jumpE,
+//    output logic        BranchE,
+//    output logic [3:0]  ALUControlE,
+//    output logic        ALUSrcE,
+
+//    output logic [31:0] RD1E,
+//    output logic [31:0] RD2E,
+//    output logic [31:0] PCE,
+
+//    output logic [4:0]  RdE,
+//    output logic [4:0]  RS1E,
+//    output logic [4:0]  RS2E,
+
+//    output logic [31:0] ImmExtendE,
+//    output logic [31:0] PcPlus4E,
+
+//    output logic [4:0]  RS1D,
+//    output logic [4:0]  RS2D,
+
+//    output logic [2:0]  funct3E,
+
+//    output logic        MemReadE,
+//    output logic        csr_enE,
+//    output logic [1:0]  csr_opE,
+//    output logic [11:0] csr_addrE,
+//    output logic        mretE,
+//    output logic        illegal_instrE,
+//    output logic        ecallE,
+//    output logic        ebreakE,
+
+//    // CSR immediate connections
+//    output logic        csr_immE,
+//    output logic [4:0]  zimmE
+//);
+
+//    logic        csr_enD;
+//    logic [1:0]  csr_opD;
+//    logic        mretD;
+//    logic        RegWriteD;
+//    logic        MemWriteD;
+//    logic        MemReadD;
+//    logic        jumpD;
+//    logic        BranchD;
+//    logic        ALUSrcD;
+//    logic        illegal_instrD;
+//    logic        ecallD;
+//    logic        ebreakD;
+
+//    logic [1:0]  ResultSrcD;
+//    logic [3:0]  ALUControlD;
+//    logic [2:0]  ImmSrcD;
+
+//    logic [31:0] RD1D;
+//    logic [31:0] RD2D;
+//    logic [31:0] ImmExtendD;
+
+//    logic [4:0]  RdD;
+//    logic [11:0] csr_addrD;
+
+//    logic        csr_immD;
+//    logic [4:0]  zimmD;
+
+//    //////////////////////////////////////////////////////
+//    // Instruction Decoded Fields
+//    //////////////////////////////////////////////////////
+//    assign zimmD     = InstrD[19:15];
+//    assign csr_addrD = InstrD[31:20];
+//    assign RdD       = InstrD[11:7];
+//    assign RS1D      = InstrD[19:15];
+//    assign RS2D      = InstrD[24:20];
+
+//    control_unit_top control (
+//        .op           (InstrD[6:0]),
+//        .funct3       (InstrD[14:12]),
+//        .funct7       (InstrD[31:25]),
+//        .RegWriteD    (RegWriteD),
+//        .ResultSrcD   (ResultSrcD),
+//        .MemWriteD    (MemWriteD),
+//        .jumpD        (jumpD),
+//        .BranchD      (BranchD),
+//        .ALUControlD  (ALUControlD),
+//        .ALUSrcD      (ALUSrcD),
+//        .ImmSrcD      (ImmSrcD),
+//        .MemReadD     (MemReadD),
+//        .csr_enD      (csr_enD),
+//        .csr_opD      (csr_opD),
+//        .mretD        (mretD),
+//        .illegal_instr(illegal_instrD),
+//        .ecall        (ecallD),
+//        .ebreak       (ebreakD),
+//        .InstrD       (InstrD),
+//        .csr_immD     (csr_immD)
+//    );
+
+//    registerfile register_file (
+//        .clk(clk),
+//        .rst(rst),
+//        .A1 (InstrD[19:15]),
+//        .A2 (InstrD[24:20]),
+//        .A3 (RdW),
+//        .WD3(ResultW),
+//        .WE3(RegWriteW),
+//        .RD1(RD1D),
+//        .RD2(RD2D)
+//    );
+
+//    sign_extend extend (
+//        .Instr    (InstrD),
+//        .ImmSrc   (ImmSrcD),
+//        .ImmExtend(ImmExtendD)
+//    );
+
+//    //////////////////////////////////////////////////////
+//    // ID/EX Pipeline Register Synchronizer
+//    //////////////////////////////////////////////////////
+//    always_ff @(posedge clk or negedge rst) begin
+//        if (!rst) begin
+//            RegWriteE      <= 1'b0;
+//            ResultSrcE     <= 2'b0;
+//            MemWriteE      <= 1'b0;
+//            jumpE          <= 1'b0;
+            
+//            /*
+//             * FIX: Removed line 'BranchE <= 1 mepc_d'b0;' 
+//             * WHY: '1 mepc_d'b0' is an invalid literal expression causing a syntax error.
+//             * The clean assignment 'BranchE <= 1'b0;' directly below handles reset properly.
+//             */
+//            BranchE        <= 1'b0;
+            
+//            ALUControlE    <= 4'b0;
+//            ALUSrcE        <= 1'b0;
+//            RD1E           <= 32'b0;
+//            RD2E           <= 32'b0;
+//            PCE            <= 32'b0;
+//            RdE            <= 5'b0;
+//            RS1E           <= 5'b0;
+//            RS2E           <= 5'b0;
+//            ImmExtendE     <= 32'b0;
+//            PcPlus4E       <= 32'b0;
+//            funct3E        <= 3'b0;
+//            MemReadE       <= 1'b0;
+//            csr_enE        <= 1'b0;
+//            csr_opE        <= 2'b0;
+//            csr_addrE      <= 12'b0;
+//            mretE          <= 1'b0;
+//            illegal_instrE <= 1'b0;
+//            ecallE         <= 1'b0;
+//            ebreakE        <= 1'b0;
+//            csr_immE       <= 1'b0;
+//            zimmE          <= 5'b0;
+//        end
+//        else if (FlushE) begin
+//            RegWriteE      <= 1'b0;
+//            ResultSrcE     <= 2'b00;
+//            MemWriteE      <= 1'b0;
+//            jumpE          <= 1'b0;
+//            BranchE        <= 1'b0;
+//            ALUControlE    <= 4'b0;
+//            ALUSrcE        <= 1'b0;
+//            RD1E           <= 32'b0;
+//            RD2E           <= 32'b0;
+//            PCE            <= 32'b0;
+//            RdE            <= 5'd0;
+//            RS1E           <= 5'b0;
+//            RS2E           <= 5'b0;
+//            ImmExtendE     <= 32'b0;
+//            PcPlus4E       <= 32'b0;
+//            funct3E        <= 3'b0;
+//            MemReadE       <= 1'b0;
+//            csr_enE        <= 1'b0;
+//            csr_opE        <= 2'b0;
+//            csr_addrE      <= 12'b0;
+//            mretE          <= 1'b0;
+//            illegal_instrE <= 1'b0;
+//            ecallE         <= 1'b0;
+//            ebreakE        <= 1'b0;
+//            csr_immE       <= 1'b0;
+//            zimmE          <= 5'b0;
+//        end
+//        else if (!StallE) begin
+//            RegWriteE      <= RegWriteD;
+//            ResultSrcE     <= ResultSrcD;
+//            MemWriteE      <= MemWriteD;
+//            MemReadE       <= MemReadD;
+//            jumpE          <= jumpD;
+//            BranchE        <= BranchD;
+//            ALUControlE    <= ALUControlD;
+//            ALUSrcE        <= ALUSrcD;
+//            RD1E           <= RD1D;
+//            RD2E           <= RD2D;
+//            PCE            <= PCD;
+//            RdE            <= RdD;
+//            RS1E           <= RS1D;
+//            RS2E           <= RS2D;
+//            ImmExtendE     <= ImmExtendD;
+//            PcPlus4E       <= PcPlus4D;
+//            funct3E        <= InstrD[14:12];
+//            csr_enE        <= csr_enD;
+//            csr_opE        <= csr_opD;
+//            csr_addrE      <= csr_addrD;
+//            mretE          <= mretD; 
+//            illegal_instrE <= illegal_instrD;
+//            ecallE         <= ecallD;
+//            ebreakE        <= ebreakD;
+//            csr_immE       <= csr_immD;
+//            zimmE          <= zimmD;
+//        end
+//    end
+
+///*
+// * FIX: Removed appended code 'BranchE <= 1 mepc_d'b0;' after endmodule.
+// * WHY: Statements written outside of modules or procedural blocks are invalid Verilog.
+// */
+//endmodule
 `timescale 1ns / 1ps
 
-module decode_stage( 
-input logic clk,rst,
+module decode_stage(
+    input  logic        clk,
+    input  logic        rst,
 
-input logic [31:0] InstrD,
-input logic [31:0] PCPlus4D,
-input logic [31:0] ResultW,
-input logic  RegWriteW_out,
-input logic [31:0] PCD,
-input logic [4:0] RdW_out,
-input logic FlushE,
-output logic RegWriteE,
-output logic [1:0] ResultSrcE,
-output logic MemWriteE,
-output logic JumpE,
-output logic BranchE,
-output logic JalrE,                 // NEW
-output logic [3:0] ALUcontrolE,
-output logic ALUSrcE,
-output logic [31:0] RD1E,
-output logic [31:0] RD2E,
-output logic [31:0] PCE,
-output logic [4:0] RdE,
-output logic [31:0] ImmExtE,
-output logic [31:0] PCPlus4E,
-output logic [4:0] Rs1E,
-output logic [4:0] Rs2E,
-output logic [4:0] Rs1DH,
-output logic [4:0] Rs2DH,
-output logic [2:0] LoadTypeE,
-output logic [2:0] StoreTypeE,
-output logic [2:0] BranchTypeE
+    input  logic        RegWriteW,
+
+    input  logic [31:0] InstrD,
+    input  logic [31:0] PCD,
+    input  logic [31:0] PcPlus4D,
+
+    input  logic [31:0] ResultW,
+    input  logic [4:0]  RdW,
+
+    input  logic        StallE, 
+    input  logic        FlushE, 
+
+    output logic        RegWriteE,
+    output logic [1:0]  ResultSrcE,
+    output logic        MemWriteE,
+    output logic        jumpE,
+    output logic        BranchE,
+    output logic [3:0]  ALUControlE,
+    output logic        ALUSrcE,
+
+    output logic [31:0] RD1E,
+    output logic [31:0] RD2E,
+    output logic [31:0] PCE,
+
+    output logic [4:0]  RdE,
+    output logic [4:0]  RS1E,
+    output logic [4:0]  RS2E,
+
+    output logic [31:0] ImmExtendE,
+    output logic [31:0] PcPlus4E,
+
+    output logic [4:0]  RS1D,
+    output logic [4:0]  RS2D,
+
+    output logic [2:0]  funct3E,
+
+    output logic        MemReadE,
+    output logic        csr_enE,
+    output logic [1:0]  csr_opE,
+    output logic [11:0] csr_addrE,
+    output logic        mretE,
+    output logic        illegal_instrE,
+    output logic        ecallE,
+    output logic        ebreakE,
+
+    // CSR immediate connections
+    output logic        csr_immE,
+    output logic [4:0]  zimmE,
+
+    // FIX: Genuine E-stage validity bit. 0 whenever the E-stage holds a
+    // flush-injected bubble (branch mispredict / trap / mret / load-use stall),
+    // 1 whenever a real decoded instruction is latched in. This is what the
+    // CSR file's valid_E port must be driven by -- NOT a constant 1.
+    output logic         InstrValidE
+);
+
+    logic        csr_enD;
+    logic [1:0]  csr_opD;
+    logic        mretD;
+    logic        RegWriteD;
+    logic        MemWriteD;
+    logic        MemReadD;
+    logic        jumpD;
+    logic        BranchD;
+    logic        ALUSrcD;
+    logic        illegal_instrD;
+    logic        ecallD;
+    logic        ebreakD;
+
+    logic [1:0]  ResultSrcD;
+    logic [3:0]  ALUControlD;
+    logic [2:0]  ImmSrcD;
+
+    logic [31:0] RD1D;
+    logic [31:0] RD2D;
+    logic [31:0] ImmExtendD;
+
+    logic [4:0]  RdD;
+    logic [11:0] csr_addrD;
+
+    logic        csr_immD;
+    logic [4:0]  zimmD;
+
+    //////////////////////////////////////////////////////
+    // Instruction Decoded Fields
+    //////////////////////////////////////////////////////
+    assign zimmD     = InstrD[19:15];
+    assign csr_addrD = InstrD[31:20];
+    assign RdD       = InstrD[11:7];
+    assign RS1D      = InstrD[19:15];
+    assign RS2D      = InstrD[24:20];
+
+    control_unit_top control (
+        .op           (InstrD[6:0]),
+        .funct3       (InstrD[14:12]),
+        .funct7       (InstrD[31:25]),
+        .RegWriteD    (RegWriteD),
+        .ResultSrcD   (ResultSrcD),
+        .MemWriteD    (MemWriteD),
+        .jumpD        (jumpD),
+        .BranchD      (BranchD),
+        .ALUControlD  (ALUControlD),
+        .ALUSrcD      (ALUSrcD),
+        .ImmSrcD      (ImmSrcD),
+        .MemReadD     (MemReadD),
+        .csr_enD      (csr_enD),
+        .csr_opD      (csr_opD),
+        .mretD        (mretD),
+        .illegal_instr(illegal_instrD),
+        .ecall        (ecallD),
+        .ebreak       (ebreakD),
+        .InstrD       (InstrD),
+        .csr_immD     (csr_immD)
     );
-   
-   logic RegWriteD, MemWriteD, JumpD, BranchD, ALUSrcD, JalrD;
-  
-   logic [1:0] ResultSrcD;
-   logic [2:0] ImmSrcD;
-   logic [3:0] ALUcontrolD;
-   logic [31:0] RD1, RD2;
-   logic [31:0] ImmExtD;
-//   logic [31:0] WD3;
-   logic [4:0] RdD;
-   logic [4:0] Rs1D;
-   logic [4:0] Rs2D;
-   logic [2:0] LoadType;
-   logic [2:0] StoreType;
-   logic [2:0] BranchType;
-   
 
-   
-   
-   // instantiating the controller 
-   controller_pipeline controller(
-   .Opcode(InstrD[6:0]),
-   .funct7(InstrD[31:25]),
-   .funct3(InstrD[14:12]),
-   .RegWrite(RegWriteD),
-   .ResultSrc(ResultSrcD),
-   .MemWrite(MemWriteD),
-   .Jump(JumpD),
-   .JalrType(JalrD),         
-   .Branch(BranchD),
-   .ALUcontrol(ALUcontrolD),
-   .ALUSrc(ALUSrcD),
-   .ImmSrc(ImmSrcD),
-   .LoadType(LoadType),
-   .StoreType(StoreType),
-   .BranchType(BranchType));
-   
-   // instantiating the register_file
-   register_file register_file_inst(
-   .clk(clk),
-   .rst(rst),
-   .WE3(RegWriteW_out),
-   .A1(InstrD[19:15]),
-   .A2(InstrD[24:20]),
-   .WD3(ResultW),
-   .RD1(RD1),
-   .A3(RdW_out),
-   .RD2(RD2));
-   
-   //instantiating the sign extended unit
-   sign_extended sign_extension_inst (
-   .InstrD(InstrD[31:7]),
-   .ImmSrcD(ImmSrcD),
-   .ImmExtD(ImmExtD));
-   
-   always_comb 
-   begin
-   Rs2DH = Rs2D;
-   Rs1DH = Rs1D;
-   end
-  
- 
- 
- // decode stage flopper   
-  always_ff@(posedge clk)
-   begin 
-   if(rst || FlushE ) begin   
-        RegWriteE  <= 0;
-        ResultSrcE <= 0;
-        MemWriteE  <= 0;
-        JumpE      <= 0;
-        BranchE    <= 0;
-        ALUcontrolE <= 0;
-        ALUSrcE    <= 0;
-        RD1E       <= 0;
-        RD2E       <= 0;
-        PCE        <= 0;
-        RdE        <= 0;
-        ImmExtE    <= 0;
-        PCPlus4E   <= 0;
-        Rs1E       <= 0;
-        Rs2E       <= 0;
-        LoadTypeE  <= 3'b010;
-        StoreTypeE <= 3'b010;
-        BranchTypeE <= 3'b000;
-        JalrE    <= 0;
-       
+    registerfile register_file (
+        .clk(clk),
+        .rst(rst),
+        .A1 (InstrD[19:15]),
+        .A2 (InstrD[24:20]),
+        .A3 (RdW),
+        .WD3(ResultW),
+        .WE3(RegWriteW),
+        .RD1(RD1D),
+        .RD2(RD2D)
+    );
+
+    sign_extend extend (
+        .Instr    (InstrD),
+        .ImmSrc   (ImmSrcD),
+        .ImmExtend(ImmExtendD)
+    );
+
+    //////////////////////////////////////////////////////
+    // ID/EX Pipeline Register Synchronizer
+    //////////////////////////////////////////////////////
+    always_ff @(posedge clk or negedge rst) begin
+        if (!rst) begin
+            RegWriteE      <= 1'b0;
+            ResultSrcE     <= 2'b0;
+            MemWriteE      <= 1'b0;
+            jumpE          <= 1'b0;
+            
+            /*
+             * FIX: Removed line 'BranchE <= 1 mepc_d'b0;' 
+             * WHY: '1 mepc_d'b0' is an invalid literal expression causing a syntax error.
+             * The clean assignment 'BranchE <= 1'b0;' directly below handles reset properly.
+             */
+            BranchE        <= 1'b0;
+            
+            ALUControlE    <= 4'b0;
+            ALUSrcE        <= 1'b0;
+            RD1E           <= 32'b0;
+            RD2E           <= 32'b0;
+            PCE            <= 32'b0;
+            RdE            <= 5'b0;
+            RS1E           <= 5'b0;
+            RS2E           <= 5'b0;
+            ImmExtendE     <= 32'b0;
+            PcPlus4E       <= 32'b0;
+            funct3E        <= 3'b0;
+            MemReadE       <= 1'b0;
+            csr_enE        <= 1'b0;
+            csr_opE        <= 2'b0;
+            csr_addrE      <= 12'b0;
+            mretE          <= 1'b0;
+            illegal_instrE <= 1'b0;
+            ecallE         <= 1'b0;
+            ebreakE        <= 1'b0;
+            csr_immE       <= 1'b0;
+            zimmE          <= 5'b0;
+            InstrValidE    <= 1'b0;
+        end
+        else if (FlushE) begin
+            RegWriteE      <= 1'b0;
+            ResultSrcE     <= 2'b00;
+            MemWriteE      <= 1'b0;
+            jumpE          <= 1'b0;
+            BranchE        <= 1'b0;
+            ALUControlE    <= 4'b0;
+            ALUSrcE        <= 1'b0;
+            RD1E           <= 32'b0;
+            RD2E           <= 32'b0;
+            PCE            <= 32'b0;
+            RdE            <= 5'd0;
+            RS1E           <= 5'b0;
+            RS2E           <= 5'b0;
+            ImmExtendE     <= 32'b0;
+            PcPlus4E       <= 32'b0;
+            funct3E        <= 3'b0;
+            MemReadE       <= 1'b0;
+            csr_enE        <= 1'b0;
+            csr_opE        <= 2'b0;
+            csr_addrE      <= 12'b0;
+            mretE          <= 1'b0;
+            illegal_instrE <= 1'b0;
+            ecallE         <= 1'b0;
+            ebreakE        <= 1'b0;
+            csr_immE       <= 1'b0;
+            zimmE          <= 5'b0;
+            InstrValidE    <= 1'b0;
+        end
+        else if (!StallE) begin
+            RegWriteE      <= RegWriteD;
+            ResultSrcE     <= ResultSrcD;
+            MemWriteE      <= MemWriteD;
+            MemReadE       <= MemReadD;
+            jumpE          <= jumpD;
+            BranchE        <= BranchD;
+            ALUControlE    <= ALUControlD;
+            ALUSrcE        <= ALUSrcD;
+            RD1E           <= RD1D;
+            RD2E           <= RD2D;
+            PCE            <= PCD;
+            RdE            <= RdD;
+            RS1E           <= RS1D;
+            RS2E           <= RS2D;
+            ImmExtendE     <= ImmExtendD;
+            PcPlus4E       <= PcPlus4D;
+            funct3E        <= InstrD[14:12];
+            csr_enE        <= csr_enD;
+            csr_opE        <= csr_opD;
+            csr_addrE      <= csr_addrD;
+            mretE          <= mretD; 
+            illegal_instrE <= illegal_instrD;
+            ecallE         <= ecallD;
+            ebreakE        <= ebreakD;
+            csr_immE       <= csr_immD;
+            zimmE          <= zimmD;
+            InstrValidE    <= 1'b1;
+        end
+        // else (StallE, no flush): hold current values, including InstrValidE,
+        // exactly like every other E-stage field above.
     end
-     //handle invalid instruction 
-    
-    else if (^InstrD === 1'bX) begin
-    // treat as NOP
-    RegWriteE  <= 0;
-    MemWriteE  <= 0;
-    BranchE    <= 0;
-    JumpE      <= 0;
-    JalrE      <= 0;
-end
-    
-    else
-     begin 
-   RegWriteE  <= RegWriteD;
-   ResultSrcE <= ResultSrcD;
-   MemWriteE  <= MemWriteD;
-   JumpE      <= JumpD;
-   BranchE    <= BranchD;
-   ALUcontrolE <= ALUcontrolD;
-   ALUSrcE    <= ALUSrcD;
-   RD1E       <= RD1;
-   RD2E       <= RD2;
-   PCE        <= PCD;
-   RdE        <= RdD;
-   ImmExtE    <= ImmExtD; 
-   PCPlus4E   <= PCPlus4D;
-   Rs1E       <= Rs1D;
-   Rs2E       <= Rs2D;
-   LoadTypeE <= LoadType; 
-   StoreTypeE <= StoreType;
-   BranchTypeE <= BranchType;
-   JalrE <= JalrD;             // NEW
-   end
-  
-   
-   end 
- 
-   
-   assign RdD = InstrD[11:7];
-   assign Rs1D = InstrD[19:15];
-   assign Rs2D = InstrD[24:20];
-   
+
+/*
+ * FIX: Removed appended code 'BranchE <= 1 mepc_d'b0;' after endmodule.
+ * WHY: Statements written outside of modules or procedural blocks are invalid Verilog.
+ */
 endmodule

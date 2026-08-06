@@ -1,50 +1,71 @@
 `timescale 1ns / 1ps
 
-module data_memory #(
-    parameter WIDTH = 32,
-    parameter DEPTH = 1024
-)(
-    input  logic clk,
-    input  logic WE,
-    input logic [3:0] BE,    //new
+module data_memory(
+    input  logic        clk,
+    input  logic        rst,
+
+    // Address from LSU
     input  logic [31:0] A,
+
+    // Write data already formatted by LSU
     input  logic [31:0] WD,
+
+    // Write enable
+    input  logic        WE,
+
+    // Byte enables from LSU
+    input  logic [3:0]  ByteEnable,
+
+    // Raw 32-bit word returned to LSU
     output logic [31:0] RD
 );
 
-    // Memory declaration
-    logic [WIDTH-1:0] datamem [0:DEPTH-1];
+    //------------------------------------------------------------
+    // 4KB RAM
+    //------------------------------------------------------------
+    logic [31:0] Mem [0:1023];
 
-    
-    assign RD = datamem[A[11:2]];
+    //------------------------------------------------------------
+    // Word Address
+    //------------------------------------------------------------
+    wire [9:0] word_addr;
 
-always_ff @(posedge clk) begin
+    assign word_addr = A[11:2];
 
-    if (WE) begin
-
-        if (BE[0])
-            datamem[A[11:2]][7:0] <= WD[7:0];
-
-        if (BE[1])
-            datamem[A[11:2]][15:8] <= WD[15:8];
-
-        if (BE[2])
-            datamem[A[11:2]][23:16] <= WD[23:16];
-
-        if (BE[3])
-            datamem[A[11:2]][31:24] <= WD[31:24];
-
-    end
-
-end
-   
+    //------------------------------------------------------------
+    // Reset + Synchronous Write
+    //------------------------------------------------------------
     integer i;
 
-    initial begin
+    always_ff @(posedge clk or negedge rst)
+    begin
+        if(!rst)
+        begin
+            for(i=0;i<1024;i=i+1)
+                Mem[i] <= 32'h00000000;
+        end
+        else if(WE)
+        begin
+            if(ByteEnable[0])
+                Mem[word_addr][7:0] <= WD[7:0];
 
-        // Default all memory to zero
-        for (i = 0; i < DEPTH; i = i + 1)
-            datamem[i] = 32'd0;
+            if(ByteEnable[1])
+                Mem[word_addr][15:8] <= WD[15:8];
+
+            if(ByteEnable[2])
+                Mem[word_addr][23:16] <= WD[23:16];
+
+            if(ByteEnable[3])
+                Mem[word_addr][31:24] <= WD[31:24];
+        end
+    end
+
+    //------------------------------------------------------------
+    // Asynchronous Read
+    //------------------------------------------------------------
+    always_comb
+    begin
+        RD = Mem[word_addr];
     end
 
 endmodule

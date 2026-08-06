@@ -3,9 +3,9 @@
 // Company: 
 // Engineer: 
 // 
-// Create Date: 03/22/2026 06:02:13 PM
+// Create Date: 19.05.2026 22:51:01
 // Design Name: 
-// Module Name: adder
+// Module Name: Adder
 // Project Name: 
 // Target Devices: 
 // Tool Versions: 
@@ -20,12 +20,10 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module adder(
-input logic [31:0] A,
-input logic [31:0] B,
-output logic [31:0] Sum
+module Adder(
+input logic [31:0] PCE,
+input logic [31:0] ImmExtendE,
+output logic [31:0] PcTargetE
     );
-    
-    assign Sum = A + B;
-    
+    assign PcTargetE = PCE +ImmExtendE;
 endmodule

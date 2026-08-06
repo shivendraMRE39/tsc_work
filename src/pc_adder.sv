@@ -3,9 +3,9 @@
 // Company: 
 // Engineer: 
 // 
-// Create Date: 03/21/2026 01:25:57 AM
+// Create Date: 19.05.2026 17:17:57
 // Design Name: 
-// Module Name: pc_adder
+// Module Name: Pc_adder
 // Project Name: 
 // Target Devices: 
 // Tool Versions: 
@@ -20,11 +20,9 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module pc_adder(
-input logic [31:0] PCF,
-output logic [31:0] PCPlus4F
+module Pc_adder(
+input logic [31:0] PcF,
+ output logic [31:0] PcF_4
     );
-    
-    assign PCPlus4F = PCF + 32'd4;
-    
+    assign PcF_4 = (PcF + 32'h00000004);
 endmodule

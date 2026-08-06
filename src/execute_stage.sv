@@ -1,174 +1,261 @@
 `timescale 1ns / 1ps
-
 //////////////////////////////////////////////////////////////////////////////////
-module execute_stage(
-input logic clk, rst,
-input logic RegWriteE,
-input logic [1:0] ResultSrcE,
-input logic MemWriteE,
-input logic JumpE,
-input logic JalrE,
-input logic BranchE,
-input logic [3:0] ALUcontrolE,
-input logic ALUSrcE,
-input logic [31:0] RD1E,
-input logic [31:0] RD2E,
-input logic [31:0] PCE,
-input logic [4:0] RdE,
-input logic [31:0] ImmExtE,
-input logic [31:0] PCPlus4E,
-input logic [1:0] ForwardAE, 
-input logic [1:0] ForwardBE,
-input logic [4:0] Rs1E,
-input logic [4:0] Rs2E,
-input  logic [31:0] ResultW,
-input logic [2:0] LoadTypeE,
-input logic [2:0] StoreTypeE,
-input logic [2:0] BranchTypeE,
+// Module Name: Execute_stage
+// Description: Pipeline execution stage containing forwarding logic, ALU, 
+//              branch unit, and the EX/MEM pipeline registers. Fully updated
+//              with an internal bypass for AUIPC (routes PCE to ALU SrcAE).
+//////////////////////////////////////////////////////////////////////////////////
 
-output logic RegWriteM,
-output logic [1:0] ResultSrcM,
-output logic MemWriteM, 
-output logic [31:0] ALUResultM,
-output logic [31:0] WriteDataM,
-output logic [4:0] RdM,
-output logic [31:0] PCPlus4M,
-output logic PCSrcE,
-output logic [31:0] PCTargetE,
-//output logic [4:0] Rs1E_out,
-//output logic [4:0] Rs2E_out,
-//output logic [4:0] RdE_H,
-//output logic [1:0]  ResultSrcE_H,
-output logic [2:0] LoadTypeM,
-output logic [2:0] StoreTypeM,
-output logic [31:0] PCTargetM
+module Execute_stage(
+    input logic clk,
+    input logic rst,
+
+    input logic RegWriteE,
+    input logic [1:0] ResultSrcE,
+    input logic MemWriteE,
+    input logic jumpE,
+    input logic BranchE,
+    input logic [3:0] ALUControlE,
+    input logic ALUSrcE,
+    input logic mretE,
+    output logic mretM,
+    
+    input logic [31:0] RD1E,
+    input logic [31:0] RD2E,
+    input logic [31:0] PCE,
+
+    input logic [4:0] RdE,
+    input logic [4:0] RS1E,
+    input logic [4:0] RS2E,
+
+    input logic [31:0] ImmExtendE,
+    input logic [31:0] PcPlus4E,
+
+    input logic [31:0] ResultW,
+    input logic [1:0] ForwardAE,
+    input logic [1:0] ForwardBE,
+    input logic [31:0] ResultM_forward,
+    
+    input logic FlushM, 
+    input logic StallM,            
+
+    input logic [2:0] funct3E,
+    
+    input logic        csr_enE,
+    input logic [1:0]  csr_opE,
+    input logic [11:0] csr_addrE,
+
+    output logic RegWriteM,
+    output logic [1:0] ResultSrcM,
+    output logic MemWriteM,
+    output logic [31:0] ALUResultM,
+    output logic [31:0] WriteDataM,
+    output logic [4:0] RdM,
+    output logic [31:0] PcPlus4M,
+    output logic [2:0] funct3M,
+
+    output logic [31:0] PcTargetE,
+    output logic PcSrcE,
+
+    input logic MemReadE,
+    output logic MemReadM,
+    
+    output logic        csr_enM,
+    output logic [1:0]  csr_opM,
+    output logic [11:0] csr_addrM,
+    input  logic [31:0] csr_rdataE,
+    output logic [31:0] csr_rdataM,
+
+    input logic illegal_instrE,
+    input logic ecallE,
+    input logic ebreakE,
+    output logic illegal_instrM,
+    output logic ecallM,
+    output logic ebreakM,
+    
+    output logic [31:0] PCM,
+    input  logic [31:0] InstrE,  // Required for internal opcode checking
+    
+    input logic        csr_immE,
+    input logic [4:0]  zimmE,
+    output logic [31:0] csr_operand
 );
-    
-    
-    logic [31:0] ALUout;
-//    logic ZeroE;
-    logic [31:0] SrcBE;
-    
-//    logic Isq;
-    logic [31:0] WriteDataE;
+
+    //////////////////////////////////////////////////////
+    // Internal Signals
+    //////////////////////////////////////////////////////
+    logic [31:0] PcPlusImm;
+    logic [31:0] ForwardedSrcAE;
     logic [31:0] SrcAE;
+    logic [31:0] SrcBE;
+    logic [31:0] ForwardBData;
+    logic [31:0] ALUOut;
+    logic BranchTaken;
+    logic zeroE;
+//logic [31:0] csr_operand;
 
-    logic take_branch;
-    logic [31:0] adderA, PCTargetE_raw;  // NEW
 
 
-
-branch_unit branch_unit_inst(
-
-    .BranchE(BranchE),
-    .BranchTypeE(BranchTypeE),
-
-    .Rs1Data(SrcAE),
-    .Rs2Data(WriteDataE),
-
-    .TakeBranch(take_branch)
-
+assign csr_operand =
+        csr_immE ?
+        {27'd0, zimmE} :
+        SrcAE;
+    //////////////////////////////////////////////////////
+    // Forwarding MUX A & B
+    //////////////////////////////////////////////////////
+    mux_3_1 mux_hazard_1 (
+        .a(RD1E),
+        .b(ResultW),
+        .c(ResultM_forward),
+        .s(ForwardAE),
+        .muxout(ForwardedSrcAE)
     );
 
-assign PCSrcE = (BranchE & take_branch) || JumpE;
+    mux_3_1 mux_hazard_3 (
+        .a(RD2E),
+        .b(ResultW),
+        .c(ResultM_forward),
+        .s(ForwardBE),
+        .muxout(ForwardBData)
+    );
 
+    //////////////////////////////////////////////////////
+    // AUIPC Architectural Bypass Logic
+    //////////////////////////////////////////////////////
+    // If instruction is AUIPC (opcode 7'b0010111), bypass register data and route PCE!
+    assign SrcAE = (InstrE[6:0] == 7'b0010111) ? PCE : ForwardedSrcAE;
 
+    //////////////////////////////////////////////////////
+    // ALU Source MUX
+    //////////////////////////////////////////////////////
+    MUX_2_1 alu_src_mux (
+        .a(ForwardBData),
+        .b(ImmExtendE),
+        .sel(ALUSrcE),
+        .c(SrcBE)
+    );
 
-//always_comb begin
-//ResultSrcE_H = 0;
-//RdE_H = 0; 
+    //////////////////////////////////////////////////////
+    // ALU
+    //////////////////////////////////////////////////////
+    ALU alu (
+        .SrcAE(SrcAE),
+        .SrcBE(SrcBE),
+        .ALUControlE(ALUControlE),
+        .ALUResult(ALUOut),
+        .zeroE(zeroE)
+    );
 
-//ResultSrcE_H = ResultSrcE;
-//RdE_H = RdE;
-//end 
+    //////////////////////////////////////////////////////
+    // Branch Decision Unit
+    //////////////////////////////////////////////////////
+    branch_unit branch_dec_inst (
+        .SrcAE(SrcAE),
+        .SrcBE(ForwardBData), 
+        .BranchE(BranchE),
+        .funct3E(funct3E),
+        .BranchTaken(BranchTaken)
+    );
 
+    //////////////////////////////////////////////////////
+    // PC Target Adder
+    //////////////////////////////////////////////////////
+    Adder pc_adder (
+        .PCE(PCE),
+        .ImmExtendE(ImmExtendE),
+        .PcTargetE(PcPlusImm)
+    );
 
-//assign Rs1E_out = (rst) ? 5'b0 : Rs1E;
-//assign Rs2E_out = (rst) ? 5'b0 : Rs2E;
+    assign PcTargetE = (jumpE && ALUSrcE)
+                       ? (ALUOut & 32'hFFFFFFFE)
+                       : PcPlusImm;
 
-// mux_forwardAE 
-mux_3_1 muxforwardAE(
-.A(RD1E),
-.B(ResultW),
-.C(ALUResultM),
-.sel(ForwardAE),
-.Y(SrcAE));
+    assign PcSrcE = BranchTaken | jumpE;
 
-// mux_forwardBE
-mux_3_1 muxforwardBE(
-.A(RD2E),
-.B(ResultW),
-.C(ALUResultM),
-.sel(ForwardBE),
-.Y(WriteDataE));
+    //////////////////////////////////////////////////////
+    // Pipeline Register (EX/MEM Register Stage)
+    //////////////////////////////////////////////////////
+    always_ff @(posedge clk or negedge rst) begin
+        if(!rst) begin
+            RegWriteM       <= 1'b0;
+            ResultSrcM      <= 2'b00;
+            MemWriteM       <= 1'b0;
+            MemReadM        <= 1'b0;
+            ALUResultM      <= 32'd0;
+            WriteDataM      <= 32'd0;
+            RdM             <= 5'd0;
+            PcPlus4M        <= 32'd0;
+            funct3M         <= 3'd0;
+            csr_enM         <= 1'b0;
+            csr_opM         <= 2'b00;
+            csr_addrM       <= 12'd0;
+            csr_rdataM      <= 32'd0;
+            mretM           <= 1'b0;
+            illegal_instrM  <= 1'b0;
+            ecallM          <= 1'b0;
+            ebreakM         <= 1'b0;
+            PCM             <= 32'b0;
+        end
+        else if(FlushM) begin
+            RegWriteM       <= 1'b0;
+            ResultSrcM      <= 2'b00;
+            MemWriteM       <= 1'b0;
+            MemReadM        <= 1'b0;
+            ALUResultM      <= 32'd0;
+            WriteDataM      <= 32'd0;
+            RdM             <= 5'd0;
+            PcPlus4M        <= 32'd0;
+            funct3M         <= 3'd0;
+            csr_enM         <= 1'b0;
+            csr_opM         <= 2'b00;
+            csr_addrM       <= 12'd0; 
+            csr_rdataM      <= 32'd0;
+            mretM           <= 1'b0;
+            illegal_instrM  <= 1'b0;
+            ecallM          <= 1'b0;
+            ebreakM         <= 1'b0;
+            PCM             <= 32'b0;
+        end
+        else if(StallM) begin
+            RegWriteM       <= RegWriteM;
+            ResultSrcM      <= ResultSrcM;
+            MemWriteM       <= MemWriteM;
+            MemReadM        <= MemReadM;
+            ALUResultM      <= ALUResultM;
+            WriteDataM      <= WriteDataM;
+            RdM             <= RdM;
+            PcPlus4M        <= PcPlus4M;
+            funct3M         <= funct3M;
+            csr_enM         <= csr_enM;
+            csr_opM         <= csr_opM;
+            csr_addrM       <= csr_addrM;
+            csr_rdataM      <= csr_rdataM;
+            mretM           <= mretM;
+            illegal_instrM  <= illegal_instrM;
+            ecallM          <= ecallM;
+            ebreakM         <= ebreakM;
+            PCM             <= PCM;
+        end
+        else begin
+            RegWriteM       <= RegWriteE;
+            ResultSrcM      <= ResultSrcE;
+            MemWriteM       <= MemWriteE;
+            MemReadM        <= MemReadE;
+            ALUResultM      <= ALUOut;
+            WriteDataM      <= ForwardBData;  
+            RdM             <= RdE;
+            PcPlus4M        <= PcPlus4E;
+            funct3M         <= funct3E;
+            csr_enM         <= csr_enE;
+            csr_opM         <= csr_opE;
+            csr_addrM       <= csr_addrE;
+            csr_rdataM      <= csr_rdataE; // Latch CSR read result so it stays aligned with RdM/ResultSrcM
+            mretM           <= mretE;
+            illegal_instrM  <= illegal_instrE;
+            ecallM          <= ecallE;
+            ebreakM         <= ebreakE;
+            PCM             <= PCE;
+        end
+    end
 
-
-    //2*1 mux instantiatioin 
-    mux_2_input mux(
-    .A(WriteDataE),
-    .B(ImmExtE),
-    .sel(ALUSrcE),
-    .C(SrcBE));
-    
-   //ALU Instantiation 
-   ALU alu(
-//   .ZeroE(ZeroE),
-   .SrcAE(SrcAE),
-   .SrcBE(SrcBE),
-   .ALUcontrol(ALUcontrolE),
-   .ALUout(ALUout));
-   
-   
-    assign adderA = JalrE ? SrcAE : PCE;   
-      
-   // adder instantiati8on 
-   adder adder(
-   .A(adderA),          
-   .B(ImmExtE),
-   .Sum(PCTargetE_raw)
-   );  
-   
-
-    // NEW: per spec, JALR must clear bit 0 of the computed target
-    assign PCTargetE = {PCTargetE_raw[31:1], 1'b0};
-   
-    
-   always_ff@(posedge clk)
-   begin 
-   if(rst) 
-   begin 
-   {RegWriteM , ResultSrcM, MemWriteM} <= 0;
-   { ALUResultM, WriteDataM, RdM, PCPlus4M} <= 0;
-   LoadTypeM  <= 3'b010;
-   StoreTypeM <= 3'b010;
-   PCTargetM <= 0;   // NEW
-   end 
-   
-//   // synthesis translate_off
-//  else if (^InstrD === 1'bX) begin
-//      RegWriteE <= 0; 
-//      MemWriteE <= 0;
-////      BranchE <= 0; 
-//      JumpE <= 0;
-//  end
-  // synthesis translate_on
-  
-   else begin 
-   RegWriteM  <= RegWriteE;
-   ResultSrcM <= ResultSrcE;
-   MemWriteM  <= MemWriteE;
-   ALUResultM <= ALUout;
-   WriteDataM <= WriteDataE;
-   RdM        <= RdE;
-   PCPlus4M   <= PCPlus4E;
-   LoadTypeM  <= LoadTypeE;
-   StoreTypeM <= StoreTypeE;
-   PCTargetM  <= PCTargetE;   // NEW
-   end 
-   end
-   
-  
-   
-   
-   
 endmodule
