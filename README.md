@@ -88,5 +88,15 @@ tsc_work/
 
 ---
 
+## 👤 Author & Maintainer
+
+- **Owner**: **Shivendra Sahu**
+- **GitHub**: [@shivendraMRE39](https://github.com/shivendraMRE39)
+- **Repository**: [https://github.com/shivendraMRE39/tsc_work](https://github.com/shivendraMRE39/tsc_work)
+- **Email**: [shivendrasahu2004@gmail.com](mailto:shivendrasahu2004@gmail.com)
+
+---
+
 ## 📜 License
 This project is open-source for educational and research purposes.
+
