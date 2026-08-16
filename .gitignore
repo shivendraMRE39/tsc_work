@@ -1,0 +1,21 @@
+# Vivado project ignore rules
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.runs/
+*.gen/
+.Xil/
+
+# Backup and temp files
+*.bak*
+*.backup
+*.tmp
+*~
+
+# Vivado logs and journals
+*.log
+*.jou
+*.str
+*.pb
+*.dmp
