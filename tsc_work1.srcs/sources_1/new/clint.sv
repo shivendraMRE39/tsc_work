@@ -1,29 +1,24 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Module Name: clint
-// Description: Single-hart Core-Local Interruptor, purpose-built for a
-//              distress-signal / sensor-monitoring SoC:
-//                - mtimecmp/mtime drive the periodic "time to sample the
-//                  sensors" timer interrupt (MTIP) -- the primary use of
-//                  this module in this system.
-//                - msip provides a software-triggered interrupt, intended
-//                  for fast-path/slow-path analysis handoff or self-test,
-//                  not for inter-hart signaling (there is only one hart).
+// Description: Core-Local Interruptor -- provides MSIP (software interrupt)
+//              and MTIP (timer interrupt) for a single-hart system, using the
+//              standard SiFive/de-facto CLINT relative register offsets:
+//                  0x0000        msip        (32-bit, bit 0 meaningful)
+//                  0x4000/0x4004 mtimecmp_lo/hi (64-bit, split into two words)
+//                  0xBFF8/0xBFFC mtime_lo/hi    (64-bit, split into two words)
+//              mtime is free-running, incrementing every clock cycle (not
+//              scaled to any real-time reference -- for cycle-accurate
+//              simulation/timing, compute mtimecmp offsets in clock cycles).
 //
-// Register map (relative to CLINT_BASE), standard RISC-V CLINT offsets:
-//     0x0000        msip        (32-bit, bit 0 meaningful)
-//     0x4000/0x4004 mtimecmp_lo/hi (64-bit, two words)
-//     0xBFF8/0xBFFC mtime_lo/hi    (64-bit, two words)
-//
-// mtime increments on rtc_i rising edges (synchronized into this clock
-// domain), NOT every system clock cycle -- this decouples the sensor
-// sampling rate from CPU clock speed, same as real hardware.
+// Bus interface matches the simple synchronous-write/combinational-read style
+// already used by data_memory.sv in this SoC, so it plugs into
+// memory_interface.sv the same way the local RAM does.
 //////////////////////////////////////////////////////////////////////////////////
 
 module clint(
     input  logic        clk,
-    input  logic         rst,          // active-low async reset (matches rest of design)
-    input  logic         rtc_i,        // real-time reference tick (see soc_top.sv's divider)
+    input  logic        rst,          // active-low async reset (matches rest of design)
 
     // Bus side -- addr is RELATIVE to CLINT_BASE (memory_interface.sv subtracts
     // the base before presenting it here)
@@ -34,9 +29,16 @@ module clint(
     output logic [31:0] rdata,
 
     // Interrupt outputs
-    output logic        msip_o,       // -> software_irq (fast-path/slow-path handoff, self-test)
-    output logic        mtip_o        // -> timer_irq[1] (periodic sensor-sampling tick)
+    output logic         msip_o,      // -> software_irq
+    output logic         mtip_o       // -> timer_irq[1]
 );
+
+    //------------------------------------------------------------
+    // Internal Registers
+    //------------------------------------------------------------
+    logic        msip_q;
+    logic [63:0] mtimecmp_q;
+    logic [63:0] mtime_q;
 
     //------------------------------------------------------------
     // Register Offsets (relative to CLINT_BASE)
@@ -48,26 +50,51 @@ module clint(
     localparam MTIME_HI_OFFSET    = 16'hBFFC;
 
     //------------------------------------------------------------
-    // Internal Registers
+    // mtime: free-running counter, increments every clock cycle,
+    // never stops except on reset.
     //------------------------------------------------------------
-    logic        msip_q;
-    logic [63:0] mtimecmp_q;
-    logic [63:0] mtime_q;
-
-    //------------------------------------------------------------
-    // rtc_i synchronizer (2-stage) + rising-edge detector
-    //------------------------------------------------------------
-    logic [1:0] rtc_sync_q;
-    logic       rtc_tick;
-
     always_ff @(posedge clk or negedge rst) begin
-        if (!rst) rtc_sync_q <= 2'b00;
-        else      rtc_sync_q <= {rtc_sync_q[0], rtc_i};
+        if (!rst)
+            mtime_q <= 64'd0;
+        else if (we && addr[15:0] == MTIME_LO_OFFSET)
+            mtime_q[31:0] <= apply_be(mtime_q[31:0], wdata, byte_enable);
+        else if (we && addr[15:0] == MTIME_HI_OFFSET)
+            mtime_q[63:32] <= apply_be(mtime_q[63:32], wdata, byte_enable);
+        else
+            mtime_q <= mtime_q + 64'd1;
     end
-    assign rtc_tick = rtc_sync_q[0] & ~rtc_sync_q[1];  // rising-edge pulse, 1 clk wide
 
     //------------------------------------------------------------
-    // Byte-enable-aware write helper
+    // mtimecmp: software-programmed deadline. Reset to all-1s so
+    // MTIP cannot spuriously assert before software configures a
+    // real deadline (common convention, not spec-mandated).
+    //------------------------------------------------------------
+    always_ff @(posedge clk or negedge rst) begin
+        if (!rst) begin
+            mtimecmp_q <= 64'hFFFFFFFF_FFFFFFFF;
+        end else begin
+            if (we && addr[15:0] == MTIMECMP_LO_OFFSET)
+                mtimecmp_q[31:0] <= apply_be(mtimecmp_q[31:0], wdata, byte_enable);
+            if (we && addr[15:0] == MTIMECMP_HI_OFFSET)
+                mtimecmp_q[63:32] <= apply_be(mtimecmp_q[63:32], wdata, byte_enable);
+        end
+    end
+
+    //------------------------------------------------------------
+    // msip: software-controlled software-interrupt request. Only
+    // bit 0 is architecturally meaningful; the rest of the word is
+    // reserved (read back as 0).
+    //------------------------------------------------------------
+    always_ff @(posedge clk or negedge rst) begin
+        if (!rst)
+            msip_q <= 1'b0;
+        else if (we && addr[15:0] == MSIP_OFFSET && byte_enable[0])
+            msip_q <= wdata[0];
+    end
+
+    //------------------------------------------------------------
+    // Byte-enable-aware write helper (matches data_memory.sv's
+    // per-byte write style)
     //------------------------------------------------------------
     function automatic logic [31:0] apply_be(
         input logic [31:0] old_val,
@@ -86,51 +113,7 @@ module clint(
     endfunction
 
     //------------------------------------------------------------
-    // mtime: increments once per rtc_tick -- this is the sensor-sampling
-    // time base. Software can also write it directly (rare, spec-legal,
-    // used for time sync).
-    //------------------------------------------------------------
-    always_ff @(posedge clk or negedge rst) begin
-        if (!rst) begin
-            mtime_q <= 64'd0;
-        end else if (we && addr[15:0] == MTIME_LO_OFFSET) begin
-            mtime_q[31:0] <= apply_be(mtime_q[31:0], wdata, byte_enable);
-        end else if (we && addr[15:0] == MTIME_HI_OFFSET) begin
-            mtime_q[63:32] <= apply_be(mtime_q[63:32], wdata, byte_enable);
-        end else if (rtc_tick) begin
-            mtime_q <= mtime_q + 64'd1;
-        end
-    end
-
-    //------------------------------------------------------------
-    // mtimecmp: software-programmed "next sample time" deadline.
-    // Resets to all-1s so MTIP cannot spuriously fire before the sensor
-    // polling loop configures a real first deadline.
-    //------------------------------------------------------------
-    always_ff @(posedge clk or negedge rst) begin
-        if (!rst) begin
-            mtimecmp_q <= 64'hFFFFFFFF_FFFFFFFF;
-        end else begin
-            if (we && addr[15:0] == MTIMECMP_LO_OFFSET)
-                mtimecmp_q[31:0] <= apply_be(mtimecmp_q[31:0], wdata, byte_enable);
-            if (we && addr[15:0] == MTIMECMP_HI_OFFSET)
-                mtimecmp_q[63:32] <= apply_be(mtimecmp_q[63:32], wdata, byte_enable);
-        end
-    end
-
-    //------------------------------------------------------------
-    // msip: software-triggered interrupt (fast-path/slow-path handoff,
-    // self-test injection). Only bit 0 is architecturally meaningful.
-    //------------------------------------------------------------
-    always_ff @(posedge clk or negedge rst) begin
-        if (!rst)
-            msip_q <= 1'b0;
-        else if (we && addr[15:0] == MSIP_OFFSET && byte_enable[0])
-            msip_q <= wdata[0];
-    end
-
-    //------------------------------------------------------------
-    // Read Mux
+    // Read Mux (combinational, matches data_memory.sv's async-read style)
     //------------------------------------------------------------
     always_comb begin
         case (addr[15:0])
@@ -139,7 +122,7 @@ module clint(
             MTIMECMP_HI_OFFSET: rdata = mtimecmp_q[63:32];
             MTIME_LO_OFFSET:    rdata = mtime_q[31:0];
             MTIME_HI_OFFSET:    rdata = mtime_q[63:32];
-            default:            rdata = 32'd0;
+            default:             rdata = 32'd0;
         endcase
     end
 
